@@ -7,14 +7,15 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import java.net.URL
 
-
 class WikiGame(val urlBase:String, val urlParams:MutableMap<String, String>){
 
-    private var  globalFlag = true // флаг для всех вложенных рекурсивных функций
+    //Минимальная часть задания - получить все ссылки со страницы по URL
+
+    private var globalFlag = true // флаг для всех вложенных рекурсивных функций
     private val findedPath = mutableListOf<String>() //найденный путь
     private val allTitles = mutableSetOf<String>() // Пространство имён всех заголовков
 
-    private fun parseResponse(urlWithParams:URL):List<String>{
+    fun parseResponse(urlWithParams:URL):List<String>{
         /** Получает url, возвращает список заголовков*/
         val jsonResponse = Json.parseToJsonElement(urlWithParams.readText())
         val pages = jsonResponse.jsonObject["query"]!!.jsonObject["pages"]
@@ -25,7 +26,7 @@ class WikiGame(val urlBase:String, val urlParams:MutableMap<String, String>){
         return titles
     }
 
-    private fun createFullURL(start:String):URL{
+     fun createFullURL(start:String):URL{
         /** из заголовка делает полный url*/
         urlParams["titles"] = start
         val urlWithParams = URL(urlBase + "?" + urlParams
@@ -35,7 +36,9 @@ class WikiGame(val urlBase:String, val urlParams:MutableMap<String, String>){
         return urlWithParams
     }
 
-    fun recursiveSearchPath(start:MutableList<String> , end:String, maxLength:Int = 7) {
+    //Дополнительная часть задания - найти самы короткий путь от одной статьи к другой
+
+    private fun recursiveSearchPath(start:MutableList<String>, end:String, maxLength:Int = 7) {
 
         /**
          * Рекурсивная функция поиска пути между двумя статьями на Википедии
@@ -82,7 +85,7 @@ class WikiGame(val urlBase:String, val urlParams:MutableMap<String, String>){
         val allTitlesInPath = mutableSetOf<String>()
         val linksForCurrentTitleList = mutableListOf(start.last()) //помещаем сюда первый заголовок
 
-        //пока длина списка не превысит границу либо пока ээлемент списка не совпадет с искомым
+        //пока длина списка не превысит границу либо пока элемент списка не совпадет с искомым
         while(linksForCurrentTitleList.last()!=end && linksForCurrentTitleList.count() < maxLength){
             val urlFull = createFullURL(linksForCurrentTitleList.last())
             try {
@@ -107,6 +110,7 @@ class WikiGame(val urlBase:String, val urlParams:MutableMap<String, String>){
         for (iter in 0 until maxSteps){
 
             val newPath = getRandomPath(start, end, maxLength)
+//            println("Path = $newPath")
             if (newPath.isNotEmpty() && newPath.last() == end){
                 listOfPaths.add(newPath)
             }
@@ -114,18 +118,77 @@ class WikiGame(val urlBase:String, val urlParams:MutableMap<String, String>){
                 return newPath
             }
         }
-            return try {
-                listOfPaths.minBy { it.count() }
-            }catch (e:Exception){
-                null
+        if (listOfPaths.isNotEmpty()){
+            return listOfPaths.minBy { it.count() }
+        }
+        return null
+    }
+    private fun searchPathShortestBuffer(start:MutableList<String>, end:String, maxLength:Int, maxSteps:Int):List<String>? {
+        // Функции поиска, ищет по всем заголовкам
+        // maxLength = максимальная степень вложенности
+        // maxSteps = максимальное количество итераций
+
+
+        if (start.last() == end) return start //eсли путь длины 1
+
+        val allTitlesInPath = mutableSetOf<String>() // чтобы не добавлять одинаковых заголовков
+        allTitlesInPath.add(start.last())
+        val bigBuffer = mutableListOf<List<String>>() //буфер всех путей
+
+        //если 2
+        try {
+            parseResponse(createFullURL(start.last())).shuffled().forEach{//для всех ссылок со стартовой страницы
+                val formatted = it.replace("\"", "")
+                if (formatted==end){
+                    return listOf(start.last(), formatted) //если окажется что тут, тогда вернёт путь длины 2
+                }
+                if (!allTitlesInPath.contains(formatted)){
+                    bigBuffer.add(listOf(start.last(),formatted))
+                    allTitlesInPath.add(formatted)
+                }
+//                println("Last record in bigBuff_2=${bigBuffer.last()}")
+
+            } //пути к текущему
+        } catch (e:Exception){
+            println("Некорректный запрос ${start.last()}")
+        }
+
+        // Если больше 2:
+
+        for (i in 3 .. maxSteps){
+
+            val currentRecordsInBuffer = bigBuffer.count() //сколько сейчас путей длины i-1
+            for (step in 0..<currentRecordsInBuffer){
+
+                val record = bigBuffer.removeAt(0) //по очереди убираем все элементы длины i-1
+                try {
+                    parseResponse(createFullURL(record.last())).shuffled().forEach{
+                        if (!globalFlag) return null //когда одна корутина нашла, другие останавливают поиск
+                        val formatted = it.replace("\"", "")
+                        if (formatted==end){
+                            globalFlag = false
+                            return record+listOf(formatted) //если окажется что тут, тогда вернёт путь длины i
+                        }
+                        if (!allTitlesInPath.contains(formatted)){
+                            bigBuffer.add(record+ listOf(formatted))
+                            allTitlesInPath.add(formatted)
+                        } //иначе добавляет в конец пути i
+//                        println("Last record in bigBuff_$i = ${bigBuffer.last()}")
+                    } //пути к текущему
+                }catch (e:Exception){
+                    println("Некорректный запрос ${record.last()}")
+                }
             }
+        }
+
+        return null
     }
 
     fun playPathShortest(startTitle:String, end:String, maxSteps:Int = 30, maxLength: Int = 7):List<String>?{
         /**Сыграть в игру WikiGame
          * Путь возвращается в виде массива заголовков*/
         val startPathList = mutableListOf(startTitle)
-        return searchPathShortest(startPathList, end, maxSteps=maxSteps, maxLength=maxLength)
+        return searchPathShortestBuffer(startPathList, end, maxSteps=maxSteps, maxLength=maxLength)
     }
 
     //Синхронная функция
@@ -151,25 +214,35 @@ suspend fun main() {
         "plnamespace" to "0", //Выбирать только из основного пространства имён (собственно, статьи)
         )
 
-    val startTitle = "Egypt"
-    val endTitle = "The Lord of the Rings"
-    val endTitle2 = "Egyptian people"
+    print("Стартовая статья: ")
+    val startTitle  = readln() // Egypt
+    print("Финишная статья: ")
+    val endTitle =  readln()// The Lord of the Rings
     val wiki = WikiGame(urlBase, urlParams)
+
+    println("#1 Все заголовки со страницы $startTitle:")
+    val responseFromWikiTitles = wiki.parseResponse(wiki.createFullURL(startTitle))
+    for (title in responseFromWikiTitles){
+        println(title)
+    }
 
 //    //Функция №1
 //    println("Рекурсивная функция поиска любого пути:")
 //    println("Путь от $startTitle до $endTitle: "+wiki.play(startTitle, endTitle, maxLength=7))
 
     //Функция №2
-    println("Функция поиска кратчайшего пути:")
-    coroutineScope {  (1..50).map{
+    println("2# Функция поиска кратчайшего пути:")
+    coroutineScope {  (1..7).map{
             println("Запуск подпроцесса $it ...")
             async(Dispatchers.Default) {
-                wiki.playPathShortest(startTitle, endTitle2, maxSteps=100, maxLength=4)
+                wiki.playPathShortest(startTitle, endTitle, maxSteps=100, maxLength=3)
             }
         }.forEach{
-            println("Путь от $startTitle до $endTitle2: ")
-            println(it.await())
+            val res =it.await()
+            if (res != null){
+                println("Путь от $startTitle до $endTitle: ")
+                println(res)
+            }
         }
     }
 }
