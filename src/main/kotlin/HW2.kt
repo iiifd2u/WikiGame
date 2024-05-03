@@ -6,6 +6,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import java.net.URL
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 class WikiGame(val urlBase:String, val urlParams:MutableMap<String, String>){
 
@@ -28,13 +30,13 @@ class WikiGame(val urlBase:String, val urlParams:MutableMap<String, String>){
 
      fun createFullURL(start:String):URL{
         /** из заголовка делает полный url*/
-        urlParams["titles"] = start
-        val urlWithParams = URL(urlBase + "?" + urlParams
-            .mapValues { it.value.replace(oldChar = ' ', newChar = '_') }
-            .map { pair -> pair.key + '=' + pair.value }
-            .joinToString(separator = "&"))
-        return urlWithParams
-    }
+        urlParams["titles"] = URLEncoder.encode(start, StandardCharsets.UTF_8.toString())
+        val urlWithParams = "$urlBase?" + urlParams
+         .mapValues { it.value.replace(oldChar = ' ', newChar = '_') }
+         .map { pair -> pair.key + '=' + pair.value }
+         .joinToString(separator = "&")
+        return URL(urlWithParams)
+     }
 
     //Дополнительная часть задания - найти самы короткий путь от одной статьи к другой
 
@@ -176,7 +178,7 @@ class WikiGame(val urlBase:String, val urlParams:MutableMap<String, String>){
 //                        println("Last record in bigBuff_$i = ${bigBuffer.last()}")
                     } //пути к текущему
                 }catch (e:Exception){
-                    println("Некорректный запрос ${record.last()}")
+                    println("Некорректный запрос ${createFullURL(record.last())}")
                 }
             }
         }
